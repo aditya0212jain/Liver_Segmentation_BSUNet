@@ -1,4 +1,4 @@
-import numpy as np 
+Simport numpy as np 
 import os
 import skimage.io as io
 import skimage.transform as trans
@@ -28,7 +28,7 @@ def downBlock(input_img,input_channel,inner_channel,output_channel):
 
     tower_3 = Conv2D(inner_channel,kernel_size=(3,3), strides=(1, 1), padding='same', activation='relu',dilation_rate=(5,5))(input_img)
 
-    output1 = keras.layers.concatenate([tower_1, tower_2, tower_3], axis=1)
+    output1 = keras.layers.concatenate([tower_1, tower_2, tower_3], axis=3)
 
     conv4 =  Conv2D(output_channel,kernel_size=(3,3),strides=(2,2),padding='same',activation='relu')(output1)
 
@@ -46,13 +46,13 @@ def denseBlock(input_img,input_channel,growth_rate,output_channel):
     b1 = BatchNormalization()(conv1)
     r1 = Activation(activation='relu')(b1)
 
-    concat1 = keras.layers.concatenate([input_img,r1],axis=1)
+    concat1 = keras.layers.concatenate([input_img,r1],axis=3)
 
     conv2 = Conv2D(growth_rate,kernel_size(3,3),strides=(1,1), padding='same')(concat1)
     b2 = BatchNormalization()(conv2)
     r2 = Activation(activation='relu')(b2)
 
-    concat2 = keras.layers.concatenate([concat1,r2],axis=1)
+    concat2 = keras.layers.concatenate([concat1,r2],axis=3)
 
     conv3 = Conv2D(output_channel,kernel_size(3,3),strides=(1,1), padding='same')(concat2)
     b3 = BatchNormalization()(conv3)
@@ -88,7 +88,7 @@ def transitionBlock(input_img,input_channel,output_channel):
     conv41 = Conv2D(output_channel,kernel_size=(1,1),strides=(1,1),activation='relu')(input_img)
     conv42 = Conv2D(output_channel,kernel_size=(5,5),strides=(1,1),padding='same',activation='relu')(conv41)
 
-    concat = keras.layers.concatenate([conv1,conv2,conv32,conv42],axis=1)
+    concat = keras.layers.concatenate([conv1,conv2,conv32,conv42],axis=3)
 
     convf = Conv2D(output_channel,kernel_size=(3,3),strides=(1,1),padding='same')(concat)
 
@@ -97,7 +97,82 @@ def transitionBlock(input_img,input_channel,output_channel):
 
     return r
 
-def baseUNet(input_size=(512,512,1)):
-    
+def baseUNet(input_size=(512,512,1),output_ch=(512,512,1)):
+    inputs = Inputs(input_size)
 
+    trans1 = transitionBlock(inputs,input_size[2],8)
+
+    down1 = downBlock(trans1,input_channel=8,inner_channel=16,output_channel=16)
+
+    down2 = downBlock(down1,input_channel=16,inner_channel=16,output_channel=32)
+
+    down3 = downBlock(down2,input_channel=32,inner_channel=32,output_channel=64)
+
+    down4 = downBlock(down3,input_channel=64,inner_channel=64,output_channel=96)
+
+    down5 = downBlock(down4,input_channel=32,inner_channel=96,output_channel=128)
+
+    trans2 = transitionBlock(down5,input_channel=128,output_channel=256)
+
+    dense1 = denseBlock(trans2,input_channel=256,growth_rate=256,output_channel=128)
+
+    up1 = upBlock(dense1,input_channel=128,inner_channel=128,output_channel=96,kernel_size=(2,2))
+
+    up2 = upBlock(up1,input_channel=96,inner_channel=96,output_channel=64,kernel_size=(2,2))
+
+    up3 = upBlock(up2,input_channel=64,inner_channel=64,output_channel=32,kernel_size=(2,2))
+
+    up4 = upBlock(up3,input_channel=32,inner_channel=32,output_channel=16,kernel_size=(2,2))
+
+    up5 = upBlock(up4,input_channel=16,inner_channel=16,output_channel=16,kernel_size=(2,2))
+
+    convf = Conv2D(output_ch,kernel_size=(3,3),strides=(1,1),padding='same',activation='sigmoid')(up5)
+
+    model = Model(inputs=[inputs], outputs=[convf])
+
+    model.compile(optimizer=Adam(lr=1e-3), loss=binary_crossentropy, metrics=[dice_coef])
     
+    return model
+
+def segmentedUnet(input_size=(512,512,1),output_ch=(512,512,1)):
+    inputs = Inputs(input_size)
+
+    trans1 = transitionBlock(inputs,input_size[2],8)
+
+    down1 = downBlock(trans1,input_channel=8,inner_channel=16,output_channel=16)
+
+    down2 = downBlock(down1,input_channel=16,inner_channel=16,output_channel=32)
+
+    down3 = downBlock(down2,input_channel=32,inner_channel=32,output_channel=64)
+
+    down4 = downBlock(down3,input_channel=64,inner_channel=64,output_channel=96)
+
+    down5 = downBlock(down4,input_channel=32,inner_channel=96,output_channel=128)
+
+    trans2 = transitionBlock(down5,input_channel=128,output_channel=256)
+
+    dense1 = denseBlock(trans2,input_channel=256,growth_rate=256,output_channel=128)
+
+    concat1 = concatenate([dense1,down5],axis=3)
+
+    up1 = upBlock(concat1,input_channel=128,inner_channel=128,output_channel=96,kernel_size=(2,2))
+
+    concat2 = concatenate([up1,down4],axis=3)
+    up2 = upBlock(concat2,input_channel=96,inner_channel=96,output_channel=64,kernel_size=(2,2))
+
+    concat3 = concatenate([up2,down3],axis=3)
+    up3 = upBlock(concat3,input_channel=64,inner_channel=64,output_channel=32,kernel_size=(2,2))
+
+    concat4 = concatenate([up3,down2],axis=3)
+    up4 = upBlock(concat4,input_channel=32,inner_channel=32,output_channel=16,kernel_size=(2,2))
+
+    concat5 = concatenate([up4,down1],axis=3)
+    up5 = upBlock(concat5,input_channel=16,inner_channel=16,output_channel=16,kernel_size=(2,2))
+
+    convf = Conv2D(output_ch,kernel_size=(3,3),strides=(1,1),padding='same',activation='sigmoid')(up5)
+
+    model = Model(inputs=[inputs], outputs=[convf])
+
+    model.compile(optimizer=Adam(lr=1e-3), loss=binary_crossentropy, metrics=[dice_coef])
+    
+    return model
