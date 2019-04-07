@@ -35,7 +35,7 @@ def create_weighted_dice(weightMap):
 def euclidean_loss(y_true,y_pred):
     y_true_f = keras.flatten(y_true)
     y_pred_f = keras.flatten(y_pred)
-    return keras.sum(keras.square(y_pred - y_true), axis=-1)
+    return keras.sqrt(keras.sum(keras.square(y_pred - y_true), axis=-1))/100
 
 
     
@@ -149,9 +149,13 @@ def baseUNet(input_size=(512,512,1),output_ch=(512,512,1)):
 
     trans2 = transitionBlock(down5,input_channel=128,output_channel=256)
 
-    dense1 = denseBlock(trans2,input_channel=256,growth_rate=256,output_channel=128)
+    dense1 = denseBlockForBottleneck(trans2,input_channel=256,growth_rate=256,output_channel=128)
+    
+    conv3 = Conv2D(128,kernel_size=(3,3),strides=(1,1), padding='same',name="feature_vector")(dense1)
+    b3 = BatchNormalization()(conv3)
+    r3 = Activation(activation='relu')(b3)
 
-    up1 = upBlock(dense1,input_channel=128,inner_channel=128,output_channel=96,kernel_size=(2,2))
+    up1 = upBlock(r3,input_channel=128,inner_channel=128,output_channel=96,kernel_size=(2,2))
 
     up2 = upBlock(up1,input_channel=96,inner_channel=96,output_channel=64,kernel_size=(2,2))
 
@@ -161,11 +165,17 @@ def baseUNet(input_size=(512,512,1),output_ch=(512,512,1)):
 
     up5 = upBlock(up4,input_channel=16,inner_channel=16,output_channel=16,kernel_size=(2,2))
 
-    convf = Conv2D(output_ch[2],kernel_size=(3,3),strides=(1,1),padding='same',activation='sigmoid')(up5)
+    convf = Conv2D(output_ch[2],kernel_size=(3,3),strides=(1,1),padding='same',activation='sigmoid',name="final_output")(up5)
 
-    model = Model(inputs=[inputs], outputs=[convf])
+    model = Model(inputs=[inputs], outputs=[convf,conv3])
+    
+    losses = {
+    "final_output": "binary_crossentropy",
+    "feature_vector": "categorical_crossentropy",
+    }
+    lossWeights = {"final_output": 1.0, "feature_vector": 0.0}
 
-    model.compile(optimizer=Adam(lr=1e-3), loss=binary_crossentropy, metrics=['accuracy'])
+    model.compile(optimizer=Adam(lr=1e-3), loss=losses,loss_weights=lossWeights, metrics=['accuracy'])
     
     return model
 
@@ -364,3 +374,4 @@ def bottleneckFeatureUnet(input_size=(512,512,1),output_ch=(512,512,1)):
 
     # model.compile(optimizer=Adam(lr=1e-3), loss=create_weighted_dice(weightMap), metrics=[dice_coef])
     model.compile(optimizer=Adam(lr=1e-3), loss=losses,loss_weights=lossWeights, metrics=[dice_coef])
+    return model

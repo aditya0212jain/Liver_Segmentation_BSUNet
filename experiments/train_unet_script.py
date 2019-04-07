@@ -10,6 +10,8 @@ from liverData import *
 
 num_of_epochs = 1
 global_best_metric = 0
+
+
 def read_ct(path):
     img = nib.load(path)
     img = img.get_data()
@@ -123,23 +125,26 @@ num_channels = 1
 num_ct = 1
 # model = liverUnet(input_size=(512,512,num_channels))
 model = get_unet_sorr(input_size=(512,512,num_channels))
-model_checkpoint = ModelCheckpoint('unet_liver_preprocess.hdf5', monitor='loss',verbose=1, save_best_only=True)
+model_checkpoint = ModelCheckpoint('weights/best_weights.hdf5', monitor='loss',verbose=1, save_best_only=True)
 model.summary()
-model.load_weights('unet_liver_after_epoch1.hdf5')
+model.load_weights('weights/final_weights.hdf5')
 
-num_epochs = 2
+num_epochs = 20
 for e in range(num_epochs):
-    print("--"*10)
-    print("epoch ",e)
+    print("*"*50)
+    print("** epoch ",e)
+    print("*"*50)
     model = trainUnet(model,model_checkpoint,num_channels=num_channels,num_ct=num_ct,folders=1,batch_size=10)
+    model.save_weights('weights/after_epoch{}.hdf5'.format(e))
+    model.save_weights('weights/final_weights.hdf5'.format(e))
 
-model.save_weights('unet_liver_after_epoch1.hdf5')
 
 h = evaluate(model,0,batch_size=2) 
 
 alp = np.array(h)
 y = np.mean(alp,axis=0)
-print(y)
-print(global_best_metric)
-if y[1]>global_best_metric[1]:
-    global_best_metric = y
+print("Average Loss and Average dice coefficient : ", y)
+
+# print(global_best_metric)
+# if y[1]>global_best_metric[1]:
+#     global_best_metric = y
